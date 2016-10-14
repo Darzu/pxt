@@ -47,7 +47,6 @@ namespace pxsim.visuals {
         end2: SVGElement;
         wires: SVGElement[];
     }
-
     function cssEncodeColor(color: string): string {
         //HACK/TODO: do real CSS encoding.
         return color
@@ -68,7 +67,7 @@ namespace pxsim.visuals {
         colorClass?: string,
         bendFactor?: number,
     }
-    export function mkWirePart(cp: [number, number], clr: string, croc: boolean = false): visuals.SVGAndSize<SVGGElement> {
+    export function mkWirePart(cp: Coord, clr: string, croc: boolean = false): visuals.SVGAndSize<SVGGElement> {
         let g = <SVGGElement>svg.elt("g");
         let [cx, cy] = cp;
         let offset = WIRE_PART_CURVE_OFF;
@@ -80,7 +79,8 @@ namespace pxsim.visuals {
             e1 = mkCrocEnd(p1, true, clr);
         else
             e1 = mkOpenJumperEnd(p1, true, clr);
-        let s = mkWirePartSeg(p1, p2, clr);
+        let s = mkWireSegSVGAndSize(p1, p2, null, INSTR_WIRE_SMOOTH);
+        (<any>s.el).style["stroke"] = clr;
         let e2 = mkOpenJumperEnd(p2, false, clr);
         g.appendChild(s.el);
         g.appendChild(e1.el);
@@ -91,36 +91,31 @@ namespace pxsim.visuals {
         let b = Math.max(e1.y + e1.h, e2.y + e2.h);
         return {el: g, x: l, y: t, w: r - l, h: b - t};
     }
-    function mkCurvedWireSeg(p1: [number, number], p2: [number, number], smooth: number, clrClass: string): SVGPathElement {
-        const coordStr = (xy: [number, number]): string => {return `${xy[0]}, ${xy[1]}`};
+    function mkWireSeg(p1: Coord, p2: Coord, clrClass?: string, smooth: number = 0): SVGPathElement {
+        const coordStr = (xy: Coord) => `${xy[0]}, ${xy[1]}`;
         let [x1, y1] = p1;
         let [x2, y2] = p2
-        let yLen = (y2 - y1);
-        let c1: [number, number] = [x1, y1 + yLen * smooth];
-        let c2: [number, number] = [x2, y2 - yLen * smooth];
-        let w = <SVGPathElement>svg.mkPath("sim-bb-wire", `M${coordStr(p1)} C${coordStr(c1)} ${coordStr(c2)} ${coordStr(p2)}`);
-        svg.addClass(w, `wire-stroke-${clrClass}`);
+        let w: SVGPathElement;
+        if (smooth > 0) {
+            let yLen = (y2 - y1);
+            let c1: Coord = [x1, y1 + yLen * smooth];
+            let c2: Coord = [x2, y2 - yLen * smooth];
+            w = <SVGPathElement>svg.mkPath("sim-bb-wire", `M${coordStr(p1)} C${coordStr(c1)} ${coordStr(c2)} ${coordStr(p2)}`);
+        } else {
+            w = <SVGPathElement>svg.mkPath("sim-bb-wire", `M${coordStr(p1)} L${coordStr(p2)}`);
+        }
+        if (clrClass) {
+            svg.addClass(w, `wire-stroke-${clrClass}`);
+        }
         return w;
     }
-    function mkWirePartSeg(p1: [number, number], p2: [number, number], clr: string): visuals.SVGAndSize<SVGPathElement> {
-        //TODO: merge with mkCurvedWireSeg
-        const coordStr = (xy: [number, number]): string => {return `${xy[0]}, ${xy[1]}`};
+    function mkWireSegSVGAndSize(p1: Coord, p2: Coord, clrClass?: string, smooth: number = 0): visuals.SVGAndSize<SVGPathElement> {
         let [x1, y1] = p1;
-        let [x2, y2] = p2
-        let yLen = (y2 - y1);
-        let c1: [number, number] = [x1, y1 + yLen * .8];
-        let c2: [number, number] = [x2, y2 - yLen * .8];
-        let e = <SVGPathElement>svg.mkPath("sim-bb-wire", `M${coordStr(p1)} C${coordStr(c1)} ${coordStr(c2)} ${coordStr(p2)}`);
-        (<any>e).style["stroke"] = clr;
+        let [x2, y2] = p2;
+        let e = mkWireSeg(p1, p2, clrClass, smooth);
         return {el: e, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x1 - x2), h: Math.abs(y1 - y2)};
     }
-    function mkWireSeg(p1: [number, number], p2: [number, number], clrClass: string): SVGPathElement {
-        const coordStr = (xy: [number, number]): string => {return `${xy[0]}, ${xy[1]}`};
-        let w = <SVGPathElement>svg.mkPath("sim-bb-wire", `M${coordStr(p1)} L${coordStr(p2)}`);
-        svg.addClass(w, `wire-stroke-${clrClass}`);
-        return w;
-    }
-    function mkBBJumperEnd(p: [number, number], clrClass: string): SVGElement {
+    function mkBBJumperEnd(p: Coord, clrClass: string): SVGElement {
         const endW = PIN_DIST / 4;
         let w = svg.elt("circle");
         let x = p[0];
@@ -131,7 +126,7 @@ namespace pxsim.visuals {
         (<any>w).style["stroke-width"] = `${endW}px`;
         return w;
     }
-    function mkOpenJumperEnd(p: [number, number], top: boolean, clr: string): visuals.SVGElAndSize {
+    function mkOpenJumperEnd(p: Coord, top: boolean, clr: string): visuals.SVGElAndSize {
         let k = visuals.PIN_DIST * 0.24;
         let plasticLength = k * 10;
         let plasticWidth = k * 2;
@@ -163,7 +158,7 @@ namespace pxsim.visuals {
         g.appendChild(el);
         return {el: g, x: x1 - strokeWidth, y: Math.min(y1, y2), w: w1 + strokeWidth * 2, h: h1 + h2};
     }
-    function mkSmallMBPinEnd(p: [number, number], top: boolean, clr: string): visuals.SVGElAndSize {
+    function mkSmallMBPinEnd(p: Coord, top: boolean, clr: string): visuals.SVGElAndSize {
         //HACK
         //TODO: merge with mkOpenJumperEnd()
         let k = visuals.PIN_DIST * 0.24;
@@ -198,7 +193,7 @@ namespace pxsim.visuals {
         g.appendChild(el);
         return {el: g, x: x1 - strokeWidth, y: Math.min(y1, y2), w: w1 + strokeWidth * 2, h: h1 + h2};
     }
-    function mkCrocEnd(p: [number, number], top: boolean, clr: string): SVGElAndSize {
+    function mkCrocEnd(p: Coord, top: boolean, clr: string): SVGElAndSize {
         //TODO: merge with mkOpenJumperEnd()
         let k = visuals.PIN_DIST * 0.24;
         const plasticWidth = k * 4;
@@ -276,12 +271,12 @@ namespace pxsim.visuals {
             }
             return minIdx;
         }
-        private closestEdgeIdx(p: [number, number]): number {
+        private closestEdgeIdx(p: Coord): number {
             let dists = this.boardEdges.map(e => Math.abs(p[1] - e));
             let edgeIdx = this.indexOfMin(dists);
             return edgeIdx;
         }
-        private closestEdge(p: [number, number]): number {
+        private closestEdge(p: Coord): number {
             return this.boardEdges[this.closestEdgeIdx(p)];
         }
 
@@ -289,7 +284,7 @@ namespace pxsim.visuals {
         private drawWire(pin1: Coord, pin2: Coord, color: string): Wire {
             let wires: SVGElement[] = [];
             let g = svg.child(this.overboard, "g", {class: "sim-bb-wire-group"});
-            const closestPointOffBoard = (p: [number, number]): [number, number] => {
+            const closestPointOffBoard = (p: Coord): Coord => {
                 const offset = PIN_DIST / 2;
                 let e = this.closestEdge(p);
                 let y: number;
@@ -321,8 +316,8 @@ namespace pxsim.visuals {
                 let midSegHover: SVGElement;
                 let isBetweenMiddleTwoEdges = (edgeIdx1 == 1 || edgeIdx1 == 2) && (edgeIdx2 == 1 || edgeIdx2 == 2);
                 if (isBetweenMiddleTwoEdges) {
-                    midSeg = mkCurvedWireSeg(offP1, offP2, BB_WIRE_SMOOTH, clrClass);
-                    midSegHover =  mkCurvedWireSeg(offP1, offP2, BB_WIRE_SMOOTH, clrClass);
+                    midSeg = mkWireSeg(offP1, offP2, clrClass, BB_WIRE_SMOOTH);
+                    midSegHover =  mkWireSeg(offP1, offP2, clrClass, BB_WIRE_SMOOTH);
                 } else {
                     midSeg = mkWireSeg(offP1, offP2, clrClass);
                     midSegHover = mkWireSeg(offP1, offP2, clrClass);
@@ -366,7 +361,7 @@ namespace pxsim.visuals {
             const CROC_Y_OFF = -17;
             let wires: SVGElement[] = [];
             let g = svg.child(this.overboard, "g", {class: "sim-bb-wire-group"});
-            const closestPointOffBoard = (p: [number, number]): [number, number] => {
+            const closestPointOffBoard = (p: Coord): Coord => {
                 const offset = PIN_DIST / 2;
                 let e = this.closestEdge(p);
                 let y: number;
@@ -408,8 +403,8 @@ namespace pxsim.visuals {
                 let midSegHover: SVGElement;
                 let isBetweenMiddleTwoEdges = (edgeIdx1 == 1 || edgeIdx1 == 2) && (edgeIdx2 == 1 || edgeIdx2 == 2);
                 if (isBetweenMiddleTwoEdges) {
-                    midSeg = mkCurvedWireSeg(offP1, pin2, BB_WIRE_SMOOTH, clrClass);
-                    midSegHover =  mkCurvedWireSeg(offP1, pin2, BB_WIRE_SMOOTH, clrClass);
+                    midSeg = mkWireSeg(offP1, pin2, clrClass, BB_WIRE_SMOOTH);
+                    midSegHover =  mkWireSeg(offP1, pin2, clrClass, BB_WIRE_SMOOTH);
                 } else {
                     midSeg = mkWireSeg(offP1, pin2, clrClass);
                     midSegHover = mkWireSeg(offP1, pin2, clrClass);
